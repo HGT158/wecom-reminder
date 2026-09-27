@@ -145,7 +145,7 @@ def done_link(task_id: int, request: Request, k: str = ""):
     if not t:
         return PlainTextResponse("任务不存在或已删除", status_code=404)
     msg, nxt = core.complete(t)
-    resp = templates.TemplateResponse(request, "done.html", {"msg": msg, "next": nxt, "icon": "✓"})
+    resp = templates.TemplateResponse(request, "done.html", {"msg": msg, "next": nxt, "icon": "✓", "version": APP_VERSION})
     _set_cookie(resp, k)
     return resp
 
@@ -159,7 +159,7 @@ def defer_link(task_id: int, request: Request, k: str = ""):
         return PlainTextResponse("任务不存在或已删除", status_code=404)
     if t["status"] == "done":
         resp = templates.TemplateResponse(request, "done.html", {
-            "icon": "⏰", "msg": f"「{t['content']}」已经完成过啦，不用延后", "next": None})
+            "icon": "⏰", "msg": f"「{t['content']}」已经完成过啦，不用延后", "next": None, "version": APP_VERSION})
         _set_cookie(resp, k)
         return resp
     new_at = max(core.parse_min(t["remind_at"]), now()) + timedelta(hours=1)
@@ -168,14 +168,14 @@ def defer_link(task_id: int, request: Request, k: str = ""):
     log.info("延后 id=%s -> %s", task_id, new_at)
     resp = templates.TemplateResponse(request, "done.html", {
         "icon": "⏰", "msg": f"已延后「{t['content']}」1 小时",
-        "next": f"下次提醒：{new_at.strftime(core.FMT_MIN)}"})
+        "next": f"下次提醒：{new_at.strftime(core.FMT_MIN)}", "version": APP_VERSION})
     _set_cookie(resp, k)
     return resp
 
 
 @app.get("/task/{task_id}/edit")
-def edit_form(task_id: int, request: Request, msg: str = ""):
-    if not authed(request, None):
+def edit_form(task_id: int, request: Request, k: str = "", msg: str = ""):
+    if not authed(request, k):
         return PlainTextResponse("未授权", status_code=401)
     t = db.get(task_id)
     if not t or t["status"] == "done":
@@ -192,7 +192,7 @@ def edit_form(task_id: int, request: Request, msg: str = ""):
         "rep_label": dict(REP_OPTS)[rep_v],
         "nag_v": nag_v,
         "rep_v": rep_v,
-        "banner": BANNERS.get(msg, msg),
+        "banner": BANNERS.get(msg, msg), "version": APP_VERSION,
     })
     return resp
 
