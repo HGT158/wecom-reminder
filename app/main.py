@@ -11,7 +11,7 @@ from fastapi.templating import Jinja2Templates
 
 from . import core, db
 from .callback import router as callback_router
-from .config import TZ, cfg, now
+from .config import APP_VERSION, TZ, cfg, now
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -74,7 +74,7 @@ def vm(t):
 
 @app.get("/healthz")
 def healthz():
-    return {"ok": True}
+    return {"ok": True, "version": APP_VERSION}
 
 
 @app.get("/", response_class=PlainTextResponse)
@@ -88,6 +88,7 @@ def index(request: Request, k: str = "", msg: str = ""):
         "done": [vm(t) for t in db.list_done()],
         "banner": banner,
         "bookmark_url": f"{(cfg.get('public_base_url') or '').rstrip('/')}/?k={TOKEN}",
+        "version": APP_VERSION,
     })
     _set_cookie(resp, k)
     return resp
