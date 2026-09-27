@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+apscheduler>=3.10
+requests
+jinja2
+python-multipart
+pyyaml
+tzdata
+pycryptodome

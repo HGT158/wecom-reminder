@@ -1,0 +1,13 @@
+services:
+  reminder:
+    build: .
+    container_name: todo-reminder
+    restart: always
+    environment:
+      - TZ=Asia/Shanghai
+      - REMINDER_DATA=/app/data
+    ports:
+      - "127.0.0.1:8443:8000"   # 只监听本机回环：公网只能经 nginx(80/443) 以域名访问
+    volumes:
+      - ./data:/app/data
+      - ./config.yaml:/app/config.yaml:ro

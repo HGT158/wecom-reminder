@@ -1,0 +1,27 @@
+# 复制为 config.yaml 后填写。secret 等敏感信息不要提交到任何仓库。
+
+# 网页访问令牌：浏览器访问和推送里的确认链接都要带 ?k=<server_token>
+# 首次访问：http://<服务器IP>:8443/?k=<server_token>
+server_token: "改成一段随机长字符串"
+
+# 部署后改成你服务器的实际地址（推送里的确认链接用它拼接）
+public_base_url: "http://YOUR_VPS_IP:8443"
+
+timezone: "Asia/Shanghai"
+
+wecom:
+  corpid: "ww你的企业ID"
+  secret: "你的应用Secret"
+  agentid: 1000002
+  touser: "@all"          # 发给应用可见范围内所有人（个人自用即你自己）
+  callback_token: ""      # 设置"接收消息服务器URL"时的 Token（解锁可信IP用）
+  encoding_aes_key: ""    # 对应的 EncodingAESKey（43位）
+
+push:
+  quiet_start: 22         # 催办免打扰开始（点）
+  quiet_end: 8            # 免打扰结束，期间催办顺延
+  max_nags: 48            # 单次提醒最多催办次数，超过转为"已静默"
+
+heartbeat:
+  enabled: true
+  time: "08:00"           # 每天此时推送"今日待办"摘要，兼作在岗心跳

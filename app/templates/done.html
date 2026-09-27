@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#F7F5EF">
+<title>待办提醒</title>
+<link rel="icon" type="image/png" href="/static/favicon.png">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5/400.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5/600.css">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main>
+  <div class="card center">
+    <div class="check">✓</div>
+    <h1>{{ msg }}</h1>
+    {% if next %}<p class="next">{{ next }}</p>{% endif %}
+    <p class="empty">可以关闭本页面</p>
+  </div>
+</main>
+</body>
+</html>

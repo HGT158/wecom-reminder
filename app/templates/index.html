@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#F7F5EF">
+<title>待办提醒</title>
+<link rel="icon" type="image/png" href="/static/favicon.png">
+<link rel="apple-touch-icon" href="/static/logo.png">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5/400.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5/500.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5/600.css">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main>
+  <header class="header">
+    <h1><img class="logo-img" src="/static/logo.png" alt="待办提醒">待办提醒</h1>
+    <p class="date" id="date"></p>
+  </header>
+
+  {% if banner %}<div class="banner">{{ banner }}</div>{% endif %}
+
+  <section class="card">
+    <h2>新建提醒</h2>
+    <form method="post" action="/create">
+      <label>要办什么事</label>
+      <textarea name="content" rows="2" required placeholder="例如：交季度报告"></textarea>
+
+      <label>什么时候提醒</label>
+      <div class="quick">
+        <button type="button" data-act="1h">1小时后</button>
+        <button type="button" data-act="t9">明天 9:00</button>
+        <button type="button" data-act="t20">明晚 20:00</button>
+        <button type="button" data-act="tomo">明天此时</button>
+      </div>
+      <input type="hidden" name="remind_at" id="remindAt">
+      <div class="dtfield" id="dtField">
+        <input type="text" id="dtDisplay" class="dt-display" placeholder="点此选择日期和时间" readonly>
+        <div class="dt-pop" id="dtPop" hidden>
+          <div class="dt-head">
+            <button type="button" class="dt-nav" id="dtPrev">‹</button>
+            <span class="dt-month" id="dtMonth"></span>
+            <button type="button" class="dt-nav" id="dtNext">›</button>
+          </div>
+          <div class="dt-week"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div>
+          <div class="dt-grid" id="dtGrid"></div>
+          <div class="dt-time">
+            <div class="wheel-wrap"><div class="wheel" id="wheelH"></div><div class="wheel-band"></div></div>
+            <span class="dt-colon">:</span>
+            <div class="wheel-wrap"><div class="wheel" id="wheelM"></div><div class="wheel-band"></div></div>
+            <button type="button" class="dt-mini" id="dtNow">此刻</button>
+          </div>
+          <div class="dt-hint" id="dtHint" hidden></div>
+          <div class="dt-actions">
+            <button type="button" class="dt-mini" id="dtClear">清除</button>
+            <button type="button" class="dt-ok" id="dtOk">确 定</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div>
+          <label>没完成时怎么催</label>
+          <div class="dd">
+            <button type="button" class="dd-btn"><span class="dd-val">每 30 分钟催</span><span class="dd-caret">▾</span></button>
+            <div class="dd-pop" hidden>
+              <button type="button" class="dd-opt" data-v="none">只提醒一次</button>
+              <button type="button" class="dd-opt" data-v="5">每 5 分钟催</button>
+              <button type="button" class="dd-opt" data-v="10">每 10 分钟催</button>
+              <button type="button" class="dd-opt sel" data-v="30">每 30 分钟催</button>
+              <button type="button" class="dd-opt" data-v="60">每 60 分钟催</button>
+            </div>
+            <input type="hidden" name="nag" value="30">
+          </div>
+        </div>
+        <div>
+          <label>重复</label>
+          <div class="dd">
+            <button type="button" class="dd-btn"><span class="dd-val">不重复</span><span class="dd-caret">▾</span></button>
+            <div class="dd-pop" hidden>
+              <button type="button" class="dd-opt sel" data-v="none">不重复</button>
+              <button type="button" class="dd-opt" data-v="daily">每天</button>
+              <button type="button" class="dd-opt" data-v="mon">每周一</button>
+              <button type="button" class="dd-opt" data-v="tue">每周二</button>
+              <button type="button" class="dd-opt" data-v="wed">每周三</button>
+              <button type="button" class="dd-opt" data-v="thu">每周四</button>
+              <button type="button" class="dd-opt" data-v="fri">每周五</button>
+              <button type="button" class="dd-opt" data-v="sat">每周六</button>
+              <button type="button" class="dd-opt" data-v="sun">每周日</button>
+            </div>
+            <input type="hidden" name="repeat" value="none">
+          </div>
+        </div>
+      </div>
+
+      <button class="primary" type="submit">建提醒</button>
+    </form>
+  </section>
+
+  <div class="section-title">进行中 <span class="count">{{ active|length }}</span></div>
+  {% for t in active %}
+  <div class="card task {% if t.status == 'silenced' %}silenced{% endif %}">
+    <div class="row">
+      <div class="content">{{ t.content }}</div>
+      <span class="time-chip">⏰ {{ t.time_display }}</span>
+    </div>
+    <div class="badges">
+      {%- if t.repeat_label %}<span class="badge">🔁 {{ t.repeat_label }}</span>{% endif %}
+      {%- if t.nag_label %}<span class="badge">{{ t.nag_label }}</span>{% endif %}
+      {%- if t.status == 'silenced' %}<span class="badge warn">已达催办上限 · 已静默</span>{% endif %}
+    </div>
+    {% if t.last_error %}<div class="badges"><span class="badge err">推送失败：{{ t.last_error }}</span></div>{% endif %}
+    <div class="ops">
+      <form method="post" action="/task/{{ t.id }}/complete"><button class="ok">✓ 完成</button></form>
+      <form method="post" action="/task/{{ t.id }}/defer"><button>延后1小时</button></form>
+      <form method="post" action="/task/{{ t.id }}/delete" onsubmit="return confirm('删除该提醒？')"><button class="danger">删除</button></form>
+    </div>
+  </div>
+  {% else %}
+  <div class="card"><p class="empty"><span class="big">🍂</span>很清爽，没有进行中的提醒</p></div>
+  {% endfor %}
+
+  {% if done %}
+  <div class="section-title">已完成 <span class="count">{{ done|length }}</span></div>
+  {% for t in done %}
+  <div class="card task done-card">
+    <div class="row">
+      <div class="content">{{ t.content }}</div>
+      <span class="time-chip">⏰ {{ t.time_display }}</span>
+    </div>
+    <div class="ops">
+      <form method="post" action="/task/{{ t.id }}/delete"><button class="danger">删除</button></form>
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <div class="footer">催办免打扰 22:00–8:00 · 每天 8:00 推送今日待办</div>
+
+  <div class="codeblock">
+    <div class="cb-bar">
+      <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <span class="cb-title">bookmark — 访问书签</span>
+      <button class="cb-copy" id="copyBtn" type="button">复制</button>
+    </div>
+    <pre class="cb-body" id="bookmarkUrl">{{ bookmark_url }}</pre>
+  </div>
+  <p class="footer-note">换手机时把上面整条链接在新浏览器打开一次即可记住登录</p>
+</main>
+<script>
+const pad = n => String(n).padStart(2, '0');
+const fmtDate = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const fmtVal = d => `${fmtDate(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+const dtField = document.getElementById('dtField');
+const dtDisplay = document.getElementById('dtDisplay');
+const dtPop = document.getElementById('dtPop');
+const dtGrid = document.getElementById('dtGrid');
+const dtMonth = document.getElementById('dtMonth');
+const wheelH = document.getElementById('wheelH');
+const wheelM = document.getElementById('wheelM');
+const remindAt = document.getElementById('remindAt');
+const ITEM_H = () => (wheelH.children[0] ? wheelH.children[0].offsetHeight : 38);
+let view = new Date(); view.setDate(1);
+let sel = null;
+
+function buildWheel(el, count, def, minV){
+  el.dataset.min = minV;
+  const start = Math.max(0, Math.min(count - 1, Math.max(def, minV)));
+  el.dataset.v = start;
+  el.innerHTML = '';
+  for(let i = 0; i < count; i++){
+    const d = document.createElement('div');
+    d.className = 'wheel-item' + (i < minV ? ' disabled' : '');
+    d.textContent = pad(i); d.dataset.v = i;
+    el.appendChild(d);
+  }
+  let raf = null;
+  el.addEventListener('scroll', () => {
+    if(raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = null;
+      let idx = Math.max(0, Math.min(count - 1, Math.round(el.scrollTop / ITEM_H())));
+      // 滑进禁用区（过去的时间）→ 自动弹回最早可选位置
+      if(el.children[idx] && el.children[idx].classList.contains('disabled')){
+        idx = +el.dataset.min;
+        el.scrollTo({ top: idx * ITEM_H() });
+      }
+      if(el.dataset.v !== String(idx)){
+        el.dataset.v = idx;
+        el.querySelectorAll('.wheel-item.sel').forEach(x => x.classList.remove('sel'));
+        if(el.children[idx]) el.children[idx].classList.add('sel');
+        if(el === wheelH) applyMinuteMin();
+      }
+    });
+  });
+  el.addEventListener('click', e => {
+    const it = e.target.closest('.wheel-item');
+    if(!it || it.classList.contains('disabled')) return;
+    el.scrollTo({ top: (+it.dataset.v) * ITEM_H(), behavior: 'smooth' });
+  });
+}
+function setWheel(el, v){
+  v = Math.max(+el.dataset.min || 0, v);
+  el.dataset.v = v;
+  el.scrollTo({ top: v * ITEM_H() });
+  el.querySelectorAll('.wheel-item.sel').forEach(x => x.classList.remove('sel'));
+  if(el.children[v]) el.children[v].classList.add('sel');
+}
+// 选中“今天”时，过去的小时/分钟不可选；未来日期全部可选
+function wheelLimits(){
+  if(!sel) return { minH: 0, minM: 0 };
+  const n = new Date();
+  if(sel.getFullYear() !== n.getFullYear() || sel.getMonth() !== n.getMonth() || sel.getDate() !== n.getDate())
+    return { minH: 0, minM: 0 };
+  return { minH: n.getHours(), minM: n.getMinutes() };
+}
+function applyMinuteMin(){
+  const { minH, minM } = wheelLimits();
+  const min = (+wheelH.dataset.v === minH) ? minM : 0;
+  if(+wheelM.dataset.min !== min){
+    buildWheel(wheelM, 60, Math.max(+wheelM.dataset.v || 0, min), min);
+    setWheel(wheelM, +wheelM.dataset.v);
+  }
+}
+function applyLimits(){
+  const { minH } = wheelLimits();
+  buildWheel(wheelH, 24, +wheelH.dataset.v || 0, minH);
+  setWheel(wheelH, +wheelH.dataset.v);
+  applyMinuteMin();
+  setWheel(wheelM, +wheelM.dataset.v);
+}
+buildWheel(wheelH, 24, 9, 0);
+buildWheel(wheelM, 60, 0, 0);
+
+function syncValue(){
+  if(!sel){ remindAt.value=''; dtDisplay.value=''; return; }
+  const h = pad(+wheelH.dataset.v || 0);
+  const m = pad(+wheelM.dataset.v || 0);
+  remindAt.value = `${fmtDate(sel)}T${h}:${m}`;
+  dtDisplay.value = `${fmtDate(sel)} ${h}:${m}`;
+}
+function renderGrid(){
+  dtMonth.textContent = `${view.getFullYear()}年${view.getMonth()+1}月`;
+  dtGrid.innerHTML = '';
+  const startDow = new Date(view.getFullYear(), view.getMonth(), 1).getDay();
+  const daysIn = new Date(view.getFullYear(), view.getMonth()+1, 0).getDate();
+  const today = new Date(); today.setHours(0,0,0,0);
+  const now = new Date();
+  document.getElementById('dtPrev').disabled =
+    view.getFullYear() === now.getFullYear() && view.getMonth() === now.getMonth();
+  for(let i=0;i<startDow;i++) dtGrid.appendChild(document.createElement('span'));
+  for(let d=1; d<=daysIn; d++){
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.textContent = d;
+    const cur = new Date(view.getFullYear(), view.getMonth(), d);
+    if(cur.getTime() < today.getTime()){
+      btn.classList.add('disabled');
+    } else {
+      if(sel && cur.getTime() === sel.getTime()) btn.classList.add('sel');
+      if(cur.getTime() === today.getTime()) btn.classList.add('today');
+      btn.addEventListener('click', () => { sel = cur; applyLimits(); renderGrid(); syncValue(); });
+    }
+    dtGrid.appendChild(btn);
+  }
+}
+function closePopEl(el){
+  if(el.hidden) return;
+  el.classList.add('closing');
+  setTimeout(() => { el.hidden = true; el.classList.remove('closing'); }, 150);
+}
+dtDisplay.addEventListener('click', () => {
+  if(dtPop.hidden){
+    dtPop.classList.remove('closing');
+    dtPop.hidden = false;
+    renderGrid();
+    applyLimits();
+    if(sel){
+      setWheel(wheelH, sel.getHours());
+      applyMinuteMin();
+      setWheel(wheelM, sel.getMinutes());
+    }
+    syncValue();
+  } else {
+    closePopEl(dtPop);
+  }
+});
+document.getElementById('dtPrev').addEventListener('click', () => { view.setMonth(view.getMonth()-1); renderGrid(); });
+document.getElementById('dtNext').addEventListener('click', () => { view.setMonth(view.getMonth()+1); renderGrid(); });
+document.getElementById('dtNow').addEventListener('click', () => {
+  const n = new Date();
+  sel = new Date(n.getFullYear(), n.getMonth(), n.getDate());
+  applyLimits();
+  setWheel(wheelH, n.getHours());
+  applyMinuteMin();
+  setWheel(wheelM, n.getMinutes());
+  renderGrid(); syncValue();
+});
+document.getElementById('dtClear').addEventListener('click', () => {
+  sel = null; syncValue(); closePopEl(dtPop);
+  chips.forEach(x => x.classList.remove('active'));
+});
+const dtHint = document.getElementById('dtHint');
+let hintTimer = null;
+function showHint(msg){
+  dtHint.textContent = msg;
+  dtHint.hidden = false;
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(() => { dtHint.hidden = true; }, 2200);
+}
+document.getElementById('dtOk').addEventListener('click', () => {
+  if(!sel) sel = new Date(new Date().setHours(0,0,0,0));
+  const chosen = new Date(sel.getFullYear(), sel.getMonth(), sel.getDate(),
+                          +wheelH.dataset.v || 0, +wheelM.dataset.v || 0);
+  const now = new Date();
+  if(chosen <= now){
+    // 只能选未来：自动顺延到 1 分钟后（跨天则连日期一起推进）
+    const t = new Date(now.getTime() + 60000);
+    sel = new Date(t.getFullYear(), t.getMonth(), t.getDate());
+    setWheel(wheelH, t.getHours()); setWheel(wheelM, t.getMinutes());
+    view = new Date(t.getFullYear(), t.getMonth(), 1);
+    renderGrid(); syncValue();
+    showHint('已自动调整到最近的可选时间');
+    return;
+  }
+  syncValue(); closePopEl(dtPop);
+});
+document.addEventListener('click', e => {
+  // 点击日期按钮会重建网格导致原节点脱离 DOM，contains 会误判，改用派发时的路径判断
+  const path = e.composedPath();
+  if(!path.includes(dtField)) closePopEl(dtPop);
+  document.querySelectorAll('.dd').forEach(dd => { if(!path.includes(dd)) closePopEl(dd.querySelector('.dd-pop')); });
+});
+
+// 催办/重复下拉（自绘，圆角纸片弹层）
+document.querySelectorAll('.dd').forEach(initDD);
+function initDD(root){
+  const btn = root.querySelector('.dd-btn');
+  const pop = root.querySelector('.dd-pop');
+  const hidden = root.querySelector('input[type=hidden]');
+  const val = root.querySelector('.dd-val');
+  btn.addEventListener('click', () => {
+    if(pop.hidden){
+      document.querySelectorAll('.dd-pop').forEach(p => { if(p !== pop) closePopEl(p); });
+      pop.classList.remove('closing');
+      pop.hidden = false;
+    } else {
+      closePopEl(pop);
+    }
+  });
+  pop.querySelectorAll('.dd-opt').forEach(o => o.addEventListener('click', () => {
+    pop.querySelectorAll('.dd-opt.sel').forEach(x => x.classList.remove('sel'));
+    o.classList.add('sel');
+    hidden.value = o.dataset.v;
+    val.textContent = o.textContent;
+    closePopEl(pop);
+  }));
+}
+
+const chips = document.querySelectorAll('.quick button');
+chips.forEach(b => b.addEventListener('click', () => {
+  const now = new Date(); let d = new Date(now);
+  if(b.dataset.act === '1h') d = new Date(now.getTime() + 3600e3);
+  if(b.dataset.act === 't9'){ d = new Date(now); d.setDate(d.getDate()+1); d.setHours(9,0,0,0); }
+  if(b.dataset.act === 't20'){ d = new Date(now); d.setDate(d.getDate()+1); d.setHours(20,0,0,0); }
+  if(b.dataset.act === 'tomo'){ d = new Date(now); d.setDate(d.getDate()+1); }
+  sel = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  applyLimits();
+  setWheel(wheelH, d.getHours());
+  applyMinuteMin();
+  setWheel(wheelM, d.getMinutes());
+  view = new Date(d.getFullYear(), d.getMonth(), 1);
+  renderGrid(); syncValue();
+  chips.forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+}));
+
+document.querySelector('form').addEventListener('submit', e => {
+  if(!remindAt.value){
+    e.preventDefault();
+    alert('请先选择提醒时间');
+    dtPop.classList.remove('closing');
+    dtPop.hidden = false; renderGrid();
+  }
+});
+
+const wd='日一二三四五六', today=new Date();
+document.getElementById('date').textContent=`${today.getMonth()+1}月${today.getDate()}日 周${wd[today.getDay()]}`;
+const copyBtn = document.getElementById('copyBtn');
+copyBtn.addEventListener('click', async () => {
+  const text = document.getElementById('bookmarkUrl').textContent.trim();
+  let done = false;
+  try { await navigator.clipboard.writeText(text); done = true; } catch (e) {}
+  if (!done) {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { done = document.execCommand('copy'); } catch (e) {}
+    ta.remove();
+  }
+  copyBtn.textContent = done ? '已复制 ✓' : '请长按选中复制';
+  copyBtn.classList.toggle('ok', done);
+  setTimeout(() => { copyBtn.textContent = '复制'; copyBtn.classList.remove('ok'); }, 1800);
+});
+</script>
+</body>
+</html>
