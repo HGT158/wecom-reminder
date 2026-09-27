@@ -1,0 +1,14 @@
+{
+  "name": "待办提醒",
+  "short_name": "待办提醒",
+  "description": "服务器待办提醒：手机建提醒，微信和电脑双端推送",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F7F5EF",
+  "theme_color": "#F7F5EF",
+  "icons": [
+    { "src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

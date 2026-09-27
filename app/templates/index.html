@@ -6,7 +6,11 @@
 <meta name="theme-color" content="#F7F5EF">
 <title>待办提醒</title>
 <link rel="icon" type="image/png" href="/static/favicon.png">
-<link rel="apple-touch-icon" href="/static/logo.png">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="manifest" href="/static/manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="待办提醒">
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5/400.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5/500.css">
@@ -404,6 +408,9 @@ copyBtn.addEventListener('click', async () => {
   copyBtn.classList.toggle('ok', done);
   setTimeout(() => { copyBtn.textContent = '复制'; copyBtn.classList.remove('ok'); }, 1800);
 });
+if ('serviceWorker' in navigator) {
+  addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+}
 </script>
 </body>
 </html>

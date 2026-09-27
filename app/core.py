@@ -32,6 +32,11 @@ def done_url(task_id: int) -> str:
     return f"{base}/done/{task_id}?k={cfg['server_token']}"
 
 
+def defer_url(task_id: int) -> str:
+    base = (cfg.get("public_base_url") or "").rstrip("/")
+    return f"{base}/defer/{task_id}?k={cfg['server_token']}"
+
+
 def in_quiet(t: datetime) -> bool:
     qs = int(cfg["push"]["quiet_start"])
     qe = int(cfg["push"]["quiet_end"])
@@ -100,7 +105,8 @@ def _handle_task(t, n: datetime):
         lines = f"{head}{t['content']}\n时间：{remind.strftime(FMT_MIN)}"
         if nag:
             lines += f"\n未确认将每 {nag} 分钟催一次（{cfg['push']['quiet_start']}:00–次日{cfg['push']['quiet_end']}:00 不打扰）"
-        lines += f"\n办完了点这里停止催办：{done_url(t['id'])}"
+        lines += f"\n✅ 办完了：{done_url(t['id'])}"
+        lines += f"\n⏰ 延后1小时：{defer_url(t['id'])}"
         if _push(t, lines, n):
             if t["repeat"]:
                 nxt = next_occurrence(t["repeat"], remind, n)
@@ -119,7 +125,7 @@ def _handle_task(t, n: datetime):
             return
         if not _attempt_allowed(t, n) or in_quiet(n):
             return
-        if _push(t, f"【催办 {t['nag_count'] + 1}/{max_nags}】{t['content']}\n还没办？点此确认：{done_url(t['id'])}", n):
+        if _push(t, f"【催办 {t['nag_count'] + 1}/{max_nags}】{t['content']}\n✅ 办完了：{done_url(t['id'])}\n⏰ 延后1小时：{defer_url(t['id'])}", n):
             db.update(t["id"], nag_count=t["nag_count"] + 1)
 
 

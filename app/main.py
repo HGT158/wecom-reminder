@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import PlainTextResponse, RedirectResponse
+from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -120,6 +120,12 @@ def create(request: Request, content: str = Form(...), remind_at: str = Form(...
     return RedirectResponse("/", status_code=303)
 
 
+@app.get("/sw.js")
+def service_worker():
+    return FileResponse(Path(__file__).parent.parent / "static" / "sw.js",
+                        media_type="application/javascript")
+
+
 @app.get("/done/{task_id}")
 def done_link(task_id: int, request: Request, k: str = ""):
     if k != TOKEN:
@@ -128,7 +134,30 @@ def done_link(task_id: int, request: Request, k: str = ""):
     if not t:
         return PlainTextResponse("任务不存在或已删除", status_code=404)
     msg, nxt = core.complete(t)
-    resp = templates.TemplateResponse(request, "done.html", {"msg": msg, "next": nxt})
+    resp = templates.TemplateResponse(request, "done.html", {"msg": msg, "next": nxt, "icon": "✓"})
+    _set_cookie(resp, k)
+    return resp
+
+
+@app.get("/defer/{task_id}")
+def defer_link(task_id: int, request: Request, k: str = ""):
+    if k != TOKEN:
+        return PlainTextResponse("链接无效（缺访问令牌）", status_code=401)
+    t = db.get(task_id)
+    if not t:
+        return PlainTextResponse("任务不存在或已删除", status_code=404)
+    if t["status"] == "done":
+        resp = templates.TemplateResponse(request, "done.html", {
+            "icon": "⏰", "msg": f"「{t['content']}」已经完成过啦，不用延后", "next": None})
+        _set_cookie(resp, k)
+        return resp
+    new_at = max(core.parse_min(t["remind_at"]), now()) + timedelta(hours=1)
+    db.update(task_id, remind_at=new_at.strftime(FMT_MIN), nag_count=0,
+              last_sent_at=None, last_attempt_at=None, last_error=None, status="pending")
+    log.info("延后 id=%s -> %s", task_id, new_at)
+    resp = templates.TemplateResponse(request, "done.html", {
+        "icon": "⏰", "msg": f"已延后「{t['content']}」1 小时",
+        "next": f"下次提醒：{new_at.strftime(core.FMT_MIN)}"})
     _set_cookie(resp, k)
     return resp
 
