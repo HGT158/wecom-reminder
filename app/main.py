@@ -82,11 +82,15 @@ def index(request: Request, k: str = "", msg: str = ""):
     if not authed(request, k):
         return PlainTextResponse(
             "请用带令牌的链接访问：http://<服务器IP>:8443/?k=你的server_token", status_code=401)
+    quiet_on = bool(cfg["push"].get("quiet_enabled", False))
+    quiet_label = (f"催办免打扰 {cfg['push']['quiet_start']}:00–次日{cfg['push']['quiet_end']}:00"
+                   if quiet_on else "")
     banner = BANNERS.get(msg, msg)
     resp = templates.TemplateResponse(request, "index.html", {
         "active": [vm(t) for t in db.list_active()],
         "done": [vm(t) for t in db.list_done()],
         "banner": banner,
+        "quiet_label": quiet_label,
         "bookmark_url": f"{(cfg.get('public_base_url') or '').rstrip('/')}/?k={TOKEN}",
         "version": APP_VERSION,
     })

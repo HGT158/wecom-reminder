@@ -141,7 +141,7 @@
   {% endfor %}
   {% endif %}
 
-  <div class="footer">催办免打扰 22:00–8:00 · 每天 8:00 推送今日待办 · v{{ version }}</div>
+  <div class="footer">{% if quiet_label %}{{ quiet_label }} · {% endif %}每天 8:00 推送今日待办 · v{{ version }}</div>
 
   <div class="codeblock">
     <div class="cb-bar">

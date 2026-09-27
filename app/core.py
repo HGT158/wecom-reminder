@@ -38,10 +38,22 @@ def defer_url(task_id: int) -> str:
 
 
 def in_quiet(t: datetime) -> bool:
+    """催办免打扰；push.quiet_enabled 为 false/缺省时恒不静默（夜间照常催）。"""
+    if not bool(cfg["push"].get("quiet_enabled", False)):
+        return False
     qs = int(cfg["push"]["quiet_start"])
     qe = int(cfg["push"]["quiet_end"])
     h = t.hour
     return (h >= qs or h < qe) if qs > qe else (qs <= h < qe)
+
+
+def quiet_hint() -> str:
+    """推送文案里的免打扰说明，仅在开关开启时展示。"""
+    if not bool(cfg["push"].get("quiet_enabled", False)):
+        return ""
+    qs = cfg["push"]["quiet_start"]
+    qe = cfg["push"]["quiet_end"]
+    return f"（{qs}:00–次日{qe}:00 不打扰）"
 
 
 def next_occurrence(repeat: str, dt: datetime, after: datetime):
@@ -104,7 +116,7 @@ def _handle_task(t, n: datetime):
         head = "【待办·补发】" if late else "【待办提醒】"
         lines = f"{head}{t['content']}\n时间：{remind.strftime(FMT_MIN)}"
         if nag:
-            lines += f"\n未确认将每 {nag} 分钟催一次（{cfg['push']['quiet_start']}:00–次日{cfg['push']['quiet_end']}:00 不打扰）"
+            lines += f"\n未确认将每 {nag} 分钟催一次{quiet_hint()}"
         lines += f"\n✅ 办完了：{done_url(t['id'])}"
         lines += f"\n⏰ 延后1小时：{defer_url(t['id'])}"
         if _push(t, lines, n):

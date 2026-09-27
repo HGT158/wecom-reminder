@@ -18,9 +18,10 @@ wecom:
   encoding_aes_key: ""    # 对应的 EncodingAESKey（43位）
 
 push:
-  quiet_start: 22         # 催办免打扰开始（点）
-  quiet_end: 8            # 免打扰结束，期间催办顺延
-  max_nags: 48            # 单次提醒最多催办次数，超过转为"已静默"
+  quiet_enabled: false   # 免打扰开关：true 时 quiet_start–quiet_end 期间暂停催办（默认关闭）
+  quiet_start: 22        # 免打扰开始（点）
+  quiet_end: 8           # 免打扰结束，期间催办顺延
+  max_nags: 48           # 单次提醒最多催办次数，超过转为"已静默"
 
 heartbeat:
   enabled: true
