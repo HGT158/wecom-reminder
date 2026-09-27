@@ -25,7 +25,13 @@ REPEAT_MAP = {"none": "", "daily": "daily", "mon": "mon", "tue": "tue", "wed": "
 BANNERS = {
     "pushfail": "任务已创建，但确认推送发送失败：请到企业微信后台把当前出口 IP 加入应用可信IP",
     "badtime": "提醒时间必须晚于现在，请重新设置",
+    "edited": "✅ 已保存修改",
 }
+
+NAG_OPTS = [("none", "只提醒一次"), ("5", "每 5 分钟催"), ("10", "每 10 分钟催"),
+            ("30", "每 30 分钟催"), ("60", "每 60 分钟催")]
+REP_OPTS = [("none", "不重复"), ("daily", "每天"), ("mon", "每周一"), ("tue", "每周二"),
+            ("wed", "每周三"), ("thu", "每周四"), ("fri", "每周五"), ("sat", "每周六"), ("sun", "每周日")]
 
 
 @asynccontextmanager
@@ -165,6 +171,57 @@ def defer_link(task_id: int, request: Request, k: str = ""):
         "next": f"下次提醒：{new_at.strftime(core.FMT_MIN)}"})
     _set_cookie(resp, k)
     return resp
+
+
+@app.get("/task/{task_id}/edit")
+def edit_form(task_id: int, request: Request, msg: str = ""):
+    if not authed(request, None):
+        return PlainTextResponse("未授权", status_code=401)
+    t = db.get(task_id)
+    if not t or t["status"] == "done":
+        return RedirectResponse("/", status_code=303)
+    nag_v = str(t["nag_interval"]) if t["nag_interval"] else "none"
+    rep_v = t["repeat"] or "none"
+    resp = templates.TemplateResponse(request, "edit.html", {
+        "t_id": t["id"],
+        "content": t["content"],
+        "dt_iso": core.parse_min(t["remind_at"]).strftime("%Y-%m-%dT%H:%M"),
+        "nag_opts": [{"v": v, "label": lb, "sel": v == nag_v} for v, lb in NAG_OPTS],
+        "rep_opts": [{"v": v, "label": lb, "sel": v == rep_v} for v, lb in REP_OPTS],
+        "nag_label": dict(NAG_OPTS)[nag_v],
+        "rep_label": dict(REP_OPTS)[rep_v],
+        "nag_v": nag_v,
+        "rep_v": rep_v,
+        "banner": BANNERS.get(msg, msg),
+    })
+    return resp
+
+
+@app.post("/task/{task_id}/edit")
+def edit_task(task_id: int, request: Request, content: str = Form(...),
+              remind_at: str = Form(...), nag: str = Form("none"), repeat: str = Form("none")):
+    if not authed(request, None):
+        return PlainTextResponse("未授权", status_code=401)
+    t = db.get(task_id)
+    if not t or t["status"] == "done":
+        return RedirectResponse("/", status_code=303)
+    content = content.strip()
+    if not content:
+        return RedirectResponse(f"/task/{task_id}/edit?msg=内容不能为空", status_code=303)
+    try:
+        dt = datetime.strptime(remind_at.strip(), "%Y-%m-%dT%H:%M").replace(tzinfo=TZ)
+    except ValueError:
+        return RedirectResponse("/", status_code=303)
+    # 与创建一致：只允许未来时间（当前分钟视为立即提醒）
+    if dt < now() - timedelta(minutes=1):
+        return RedirectResponse(f"/task/{task_id}/edit?msg=badtime", status_code=303)
+    nag_min = NAG_MAP.get(nag)
+    rep = REPEAT_MAP.get(repeat, "")
+    db.update(task_id, content=content, remind_at=dt.strftime(FMT_MIN), nag_interval=nag_min,
+              repeat=rep, nag_count=0, last_sent_at=None, last_attempt_at=None,
+              last_error=None, status="pending")
+    log.info("编辑任务 id=%s -> %s @ %s nag=%s repeat=%s", task_id, content, dt, nag_min, rep)
+    return RedirectResponse("/?msg=edited", status_code=303)
 
 
 @app.post("/task/{task_id}/complete")

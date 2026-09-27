@@ -49,6 +49,10 @@ main { max-width: 640px; margin: 0 auto; padding: 20px 16px 40px; position: rela
 }
 .header h1:hover .logo-img { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(197, 154, 69, .45); }
 .header .date { margin: 0; font-size: 13px; color: var(--muted); font-family: var(--mono); }
+.back { font-size: 13px; color: var(--muted); text-decoration: none; }
+.back:hover { color: var(--accent-ink); }
+.cancel { display: block; text-align: center; margin-top: 14px; font-size: 13px; color: var(--muted); text-decoration: none; }
+.cancel:hover { color: var(--accent-ink); }
 
 /* ---------- 卡片 ---------- */
 .card {
