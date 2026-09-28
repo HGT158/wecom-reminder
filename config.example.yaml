@@ -8,8 +8,8 @@
 server_token: "改成一段随机长字符串"
 
 # 部署后改成你服务器的实际地址（推送里的确认链接用它拼接）
-# 反代模式填 https://<你的域名>；裸暴露模式填 http://<域名或IP>:8443
-public_base_url: "http://YOUR_VPS_IP:8443"
+# 反代模式（推荐）填不带端口的 https://<你的域名>；裸暴露模式填 http://<域名或IP>:8443
+public_base_url: "https://<你的域名>"
 
 timezone: "Asia/Shanghai"
 

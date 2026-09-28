@@ -3,4 +3,3 @@ data/
 __pycache__/
 *.pyc
 config.yaml
-部署说明.md
