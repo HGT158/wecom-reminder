@@ -133,7 +133,10 @@ def _handle_task(t, n: datetime):
     # 2) 催办：距上次推送超过设定间隔，且不在免打扰时段
     if nag and last_sent and last_sent + timedelta(minutes=nag) <= n:
         if t["nag_count"] >= max_nags:
-            db.update(t["id"], status="silenced")
+            # 静默是终态，每 tick 都会走到这里：只在首次转为 silenced 时写库，
+            # 避免无意义的重复写（同时保留 max_nags 调大后任务自动复活的行为）
+            if t["status"] != "silenced":
+                db.update(t["id"], status="silenced")
             return
         if not _attempt_allowed(t, n) or in_quiet(n):
             return
