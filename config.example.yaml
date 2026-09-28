@@ -1,10 +1,14 @@
 # 复制为 config.yaml 后填写。secret 等敏感信息不要提交到任何仓库。
 
 # 网页访问令牌：浏览器访问和推送里的确认链接都要带 ?k=<server_token>
-# 首次访问：http://<服务器IP>:8443/?k=<server_token>
+# 首次访问：https://<你的域名>/?k=<server_token>
+#   注意：docker-compose.yml 默认只绑 127.0.0.1:8443（公网不可达），必须经 nginx 反代访问；
+#   若把 ports 改成 "8443:8000" 裸暴露，则用 http://<服务器IP>:8443/?k=<server_token>
+#   详见 部署说明.md 第 0 节的「暴露方式」
 server_token: "改成一段随机长字符串"
 
 # 部署后改成你服务器的实际地址（推送里的确认链接用它拼接）
+# 反代模式填 https://<你的域名>；裸暴露模式填 http://<域名或IP>:8443
 public_base_url: "http://YOUR_VPS_IP:8443"
 
 timezone: "Asia/Shanghai"

@@ -57,6 +57,10 @@ def _set_cookie(resp, k: str):
         resp.set_cookie("k", TOKEN, max_age=31536000, httponly=True)
 
 
+def base_url() -> str:
+    return (cfg.get("public_base_url") or "").rstrip("/")
+
+
 def vm(t):
     r = core.parse_min(t["remind_at"])
     n = now()
@@ -86,18 +90,25 @@ def healthz():
 @app.get("/", response_class=PlainTextResponse)
 def index(request: Request, k: str = "", msg: str = ""):
     if not authed(request, k):
-        return PlainTextResponse(
-            "请用带令牌的链接访问：http://<服务器IP>:8443/?k=你的server_token", status_code=401)
+        # 提示里的基地址取自配置，避免写死端口与实际部署方式不符；
+        # 令牌本身不打出来（此页面未鉴权）
+        base = base_url()
+        hint = f"{base}/?k=<server_token>" if base else "/?k=<server_token>"
+        return PlainTextResponse(f"请用带令牌的链接访问：{hint}", status_code=401)
     quiet_on = bool(cfg["push"].get("quiet_enabled", False))
     quiet_label = (f"催办免打扰 {cfg['push']['quiet_start']}:00–次日{cfg['push']['quiet_end']}:00"
                    if quiet_on else "")
+    hb = cfg.get("heartbeat") or {}
+    heartbeat_label = (f"每天 {hb.get('time', '08:00')} 推送今日待办"
+                       if hb.get("enabled") else "")
     banner = BANNERS.get(msg, msg)
     resp = templates.TemplateResponse(request, "index.html", {
         "active": [vm(t) for t in db.list_active()],
         "done": [vm(t) for t in db.list_done()],
         "banner": banner,
         "quiet_label": quiet_label,
-        "bookmark_url": f"{(cfg.get('public_base_url') or '').rstrip('/')}/?k={TOKEN}",
+        "heartbeat_label": heartbeat_label,
+        "bookmark_url": f"{base_url()}/?k={TOKEN}",
         "version": APP_VERSION,
     })
     _set_cookie(resp, k)
