@@ -70,7 +70,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app import ai, callback, config, core, db, main, service, wecom  # noqa: E402
+from app import ai, callback, commands, config, core, db, main, service, wecom  # noqa: E402
 
 
 def _wecom_encrypt(plain_text: str, corpid: str = _CORP_ID) -> str:
@@ -520,4 +520,101 @@ def test_ai_all_tools_update_defer_complete_list_and_past_time(monkeypatch):
     cmp_res = ai._run_tool("complete_task", json.dumps({"task_id": tid}), state)
     assert cmp_res["ok"] and db.get(tid)["status"] == "done"
     assert tid not in state["touched_ids"]
+
+
+# -------------------- 5. 斜杠快捷命令测试 --------------------
+
+def test_slash_commands_end_to_end(monkeypatch):
+    fixed_now = datetime(2026, 11, 26, 11, 30, tzinfo=config.TZ)
+    monkeypatch.setattr(commands, "now", lambda: fixed_now)
+    monkeypatch.setattr(service, "now", lambda: fixed_now)
+    monkeypatch.setattr(core, "now", lambda: fixed_now)
+    monkeypatch.setattr(db, "now", lambda: fixed_now)
+
+    # 非斜杠文本不命中
+    assert commands.dispatch("好的收到") == (False, "")
+
+    # /help & /status
+    hit_h, help_txt = commands.dispatch("/help")
+    assert hit_h and "/list" in help_txt and "/in" in help_txt and "/defer" in help_txt
+    hit_s, st_txt = commands.dispatch("/status")
+    assert hit_s and f"v{config.APP_VERSION}" in st_txt and "deepseek-chat" in st_txt
+
+    # /in 创建快捷倒计时提醒
+    hit_in, in_txt = commands.dispatch("/in 30m 关火")
+    assert hit_in and "2026-11-26 12:00" in in_txt and "关火" in in_txt
+    hit_in2, in_txt2 = commands.dispatch("/in 1.5h 取快递")
+    assert hit_in2 and "2026-11-26 13:00" in in_txt2
+    assert "用法" in commands.dispatch("/in abc")[1]
+
+    # /today 与 /list
+    _, td_txt = commands.dispatch("/td")
+    assert "今日待办" in td_txt and "关火" in td_txt and "取快递" in td_txt
+    _, ls_txt = commands.dispatch("/ls")
+    assert "进行中待办（2 件）" in ls_txt
+
+    active = db.list_active()
+    id1, id2 = active[0]["id"], active[1]["id"]
+
+    # /defer 延后
+    _, df_txt = commands.dispatch(f"/defer #{id1} 2h")
+    assert "120 分钟" in df_txt and "2026-11-26 14:00" in df_txt
+
+    # /done 批量完成
+    _, dn_txt = commands.dispatch(f"/done {id1} {id2}")
+    assert f"#{id1}" in dn_txt and f"#{id2}" in dn_txt
+    assert db.list_active() == []
+
+    # /list done
+    _, lsd_txt = commands.dispatch("/list done")
+    assert "最近已完成（2 件）" in lsd_txt
+
+    # /del 单条与超限拦截
+    t3 = service.create_reminder("待删1", fixed_now + timedelta(hours=3), notify=False)["id"]
+    t4 = service.create_reminder("待删2", fixed_now + timedelta(hours=4), notify=False)["id"]
+    t5 = service.create_reminder("待删3", fixed_now + timedelta(hours=5), notify=False)["id"]
+    _, err_del = commands.dispatch(f"/del {t3} {t4} {t5}")
+    assert "最多处理 2 个" in err_del
+    _, ok_del = commands.dispatch(f"/rm {t3} {t4}")
+    assert "已删除" in ok_del and len(db.list_active()) == 1
+
+    # 未知斜杠命令提示
+    hit_unk, unk_txt = commands.dispatch("/unknowncmd")
+    assert hit_unk and "未知命令 /unknowncmd" in unk_txt
+
+
+def test_callback_routes_non_ai_slash_commands(monkeypatch):
+    sent = []
+    monkeypatch.setattr(callback, "send_text", lambda txt, touser=None: sent.append((touser, txt)))
+    fixed_now = datetime(2026, 11, 26, 11, 30, tzinfo=config.TZ)
+    monkeypatch.setattr(commands, "now", lambda: fixed_now)
+    monkeypatch.setattr(service, "now", lambda: fixed_now)
+    monkeypatch.setattr(db, "now", lambda: fixed_now)
+
+    client = TestClient(main.app)
+    inner_xml = (
+        f"<xml>"
+        f"<ToUserName><![CDATA[{_CORP_ID}]]></ToUserName>"
+        f"<FromUserName><![CDATA[zhangsan]]></FromUserName>"
+        f"<CreateTime>1700000009</CreateTime>"
+        f"<MsgType><![CDATA[text]]></MsgType>"
+        f"<Content><![CDATA[/in 45m 喝水]]></Content>"
+        f"<MsgId>m_slash_1</MsgId>"
+        f"<AgentID>1000002</AgentID>"
+        f"</xml>"
+    )
+    enc = _wecom_encrypt(inner_xml)
+    ts, nonce = "1700000009", "n999"
+    sig = _wecom_sig(ts, nonce, enc)
+    resp = client.post(
+        "/wecom/callback",
+        params={"msg_signature": sig, "timestamp": ts, "nonce": nonce},
+        content=f"<xml><Encrypt><![CDATA[{enc}]]></Encrypt></xml>".encode("utf-8"),
+    )
+    assert resp.status_code == 200 and resp.text == "success"
+    assert len(sent) == 1
+    assert sent[0][0] == "zhangsan"
+    assert "喝水" in sent[0][1]
+    assert len(db.list_active()) == 1
+
 

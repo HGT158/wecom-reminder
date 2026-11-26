@@ -1,4 +1,4 @@
-"""企微接收消息回调：处理 URL 验证以及 /ai 命令异步触发。"""
+"""企微接收消息回调：处理 URL 验证以及斜杠命令（/ai、/list 等）异步触发。"""
 import base64
 import hashlib
 import hmac
@@ -10,7 +10,7 @@ from Crypto.Cipher import AES
 from fastapi import APIRouter, BackgroundTasks, Request
 from fastapi.responses import PlainTextResponse
 
-from . import ai, db
+from . import commands, db
 from .config import ai_cfg, cfg
 from .wecom import send_text
 
@@ -56,19 +56,19 @@ def _configured() -> bool:
     return bool(cfg["wecom"].get("callback_token")) and bool(cfg["wecom"].get("encoding_aes_key"))
 
 
-def _handle_ai_background(from_user: str, prompt: str) -> None:
-    """在响应企微回调之后异步执行 AI 指令，并主动推送回复给发送者。"""
+def _handle_command_background(from_user: str, raw_text: str) -> None:
+    """在响应企微回调之后异步执行斜杠命令，并主动推送回复给发送者。"""
     try:
-        reply = ai.handle_command(prompt)
+        _, reply = commands.dispatch(raw_text)
     except Exception:
-        log.exception("AI 命令后台执行异常 from_user=%s", from_user)
-        reply = "AI 处理遇到意外错误，请稍后重试或使用网页端操作。"
+        log.exception("斜杠命令后台执行异常 from_user=%s", from_user)
+        reply = "命令处理遇到意外错误，请稍后重试或使用网页端操作。"
     if not reply:
         return
     try:
         send_text(reply, touser=from_user)
     except Exception:
-        log.exception("AI 结果回推企微失败 from_user=%s", from_user)
+        log.exception("命令结果回推企微失败 from_user=%s", from_user)
 
 
 @router.get("/wecom/callback")
@@ -95,7 +95,7 @@ async def verify(request: Request):
 
 @router.post("/wecom/callback")
 async def receive(request: Request, background_tasks: BackgroundTasks):
-    """接收企微推送消息：验签解密并去重后，命中 /ai 命令则后台执行，立即返回 success 防 5 秒超时。"""
+    """接收企微推送消息：验签解密并去重后，命中斜杠命令则后台执行，立即返回 success 防 5 秒超时。"""
     body = await request.body()
     if not _configured():
         log.warning("收到企微回调，但未配置 callback_token / encoding_aes_key")
@@ -128,11 +128,7 @@ async def receive(request: Request, background_tasks: BackgroundTasks):
     create_time = (root.findtext("CreateTime") or "").strip()
     content = root.findtext("Content") or ""
 
-    if msg_type != "text":
-        return PlainTextResponse("success")
-
-    is_ai, prompt = ai.parse_ai_command(content)
-    if not is_ai:
+    if msg_type != "text" or not commands.is_slash_command(content):
         return PlainTextResponse("success")
 
     dedup_key = (
@@ -146,9 +142,10 @@ async def receive(request: Request, background_tasks: BackgroundTasks):
 
     allowed = ai_cfg()["allowed_users"]
     if allowed and from_user not in allowed:
-        log.warning("拦截未授权企微用户触发 /ai：FromUserName=%s", from_user)
+        log.warning("拦截未授权企微用户触发命令：FromUserName=%s", from_user)
         return PlainTextResponse("success")
 
-    log.info("收到 /ai 指令 from_user=%s msg_id=%s prompt_len=%d", from_user, msg_id, len(prompt))
-    background_tasks.add_task(_handle_ai_background, from_user, prompt)
+    cmd_name, _ = commands.parse_command(content)
+    log.info("收到斜杠命令 /%s from_user=%s msg_id=%s", cmd_name, from_user, msg_id)
+    background_tasks.add_task(_handle_command_background, from_user, content)
     return PlainTextResponse("success")

@@ -15,7 +15,7 @@ with open(CONFIG_PATH, encoding="utf-8") as f:
 
 TZ = ZoneInfo(cfg.get("timezone", "Asia/Shanghai"))
 
-APP_VERSION = "1.3"
+APP_VERSION = "1.4"
 
 
 def now() -> datetime:
