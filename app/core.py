@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from . import db
-from .config import TZ, cfg, now
+from .config import TZ, base_url, cfg, now, push_cfg
 from .wecom import send_text
 
 log = logging.getLogger("reminder.core")
@@ -27,33 +27,41 @@ def parse_sec(s: str) -> datetime:
     return datetime.strptime(s, FMT_SEC).replace(tzinfo=TZ)
 
 
+def effective_remind(t) -> datetime:
+    """返回任务本轮实际生效的提醒时间（若处于延后状态则取 snooze_until）。"""
+    raw = t["snooze_until"] if "snooze_until" in t.keys() and t["snooze_until"] else t["remind_at"]
+    return parse_min(raw)
+
+
 def done_url(task_id: int) -> str:
-    base = (cfg.get("public_base_url") or "").rstrip("/")
-    return f"{base}/done/{task_id}?k={cfg['server_token']}"
+    return f"{base_url()}/done/{task_id}?k={cfg['server_token']}"
 
 
 def defer_url(task_id: int) -> str:
-    base = (cfg.get("public_base_url") or "").rstrip("/")
-    return f"{base}/defer/{task_id}?k={cfg['server_token']}"
+    return f"{base_url()}/defer/{task_id}?k={cfg['server_token']}"
+
+
+def edit_url(task_id: int) -> str:
+    return f"{base_url()}/task/{task_id}/edit?k={cfg['server_token']}"
 
 
 def in_quiet(t: datetime) -> bool:
     """催办免打扰；push.quiet_enabled 为 false/缺省时恒不静默（夜间照常催）。"""
-    if not bool(cfg["push"].get("quiet_enabled", False)):
+    pc = push_cfg()
+    if not pc["quiet_enabled"]:
         return False
-    qs = int(cfg["push"]["quiet_start"])
-    qe = int(cfg["push"]["quiet_end"])
+    qs = pc["quiet_start"]
+    qe = pc["quiet_end"]
     h = t.hour
     return (h >= qs or h < qe) if qs > qe else (qs <= h < qe)
 
 
 def quiet_hint() -> str:
     """推送文案里的免打扰说明，仅在开关开启时展示。"""
-    if not bool(cfg["push"].get("quiet_enabled", False)):
+    pc = push_cfg()
+    if not pc["quiet_enabled"]:
         return ""
-    qs = cfg["push"]["quiet_start"]
-    qe = cfg["push"]["quiet_end"]
-    return f"（{qs}:00–次日{qe}:00 不打扰）"
+    return f"（{pc['quiet_start']}:00–次日{pc['quiet_end']}:00 不打扰）"
 
 
 def next_occurrence(repeat: str, dt: datetime, after: datetime):
@@ -69,6 +77,19 @@ def next_occurrence(repeat: str, dt: datetime, after: datetime):
     while d <= after or d.weekday() != wd:
         d += timedelta(days=1)
     return d
+
+
+def _latest_due_cycle(repeat: str, anchor: datetime, n: datetime) -> datetime | None:
+    """当未确认的重复任务跨过一个或多个周期时，返回不晚于 n 的最新周期锚点。"""
+    nxt = next_occurrence(repeat, anchor, anchor)
+    if not nxt or nxt > n:
+        return None
+    latest = nxt
+    while True:
+        cand = next_occurrence(repeat, latest, latest)
+        if not cand or cand > n:
+            return latest
+        latest = cand
 
 
 def _attempt_allowed(t, n: datetime) -> bool:
@@ -103,12 +124,25 @@ def process_tick():
 
 
 def _handle_task(t, n: datetime):
-    remind = parse_min(t["remind_at"])
+    anchor = parse_min(t["remind_at"])
+    snooze_raw = t["snooze_until"] if "snooze_until" in t.keys() else None
+    snooze = parse_min(snooze_raw) if snooze_raw else None
+    remind = snooze or anchor
     last_sent = parse_sec(t["last_sent_at"]) if t["last_sent_at"] else None
     nag = t["nag_interval"]
-    max_nags = int(cfg["push"]["max_nags"])
+    max_nags = push_cfg()["max_nags"]
 
-    # 1) 到点提醒：本次 occurrence 还没发过就发
+    # 若带催办的重复任务未在当轮确认且已跨越到下一周期，则切入最新周期重新提醒
+    if t["repeat"] and last_sent is not None:
+        latest = _latest_due_cycle(t["repeat"], anchor, n)
+        if latest and last_sent < latest and (not snooze or snooze <= latest):
+            db.update(t["id"], remind_at=latest.strftime(FMT_MIN),
+                      snooze_until=None, nag_count=0, status="pending")
+            anchor = latest
+            remind = latest
+            snooze = None
+
+    # 1) 到点提醒：本次 occurrence（或延后时间）还没发过就发
     if remind <= n and (last_sent is None or last_sent < remind):
         if not _attempt_allowed(t, n):
             return
@@ -120,14 +154,19 @@ def _handle_task(t, n: datetime):
         lines += f"\n✅ 办完了：{done_url(t['id'])}"
         lines += f"\n⏰ 延后1小时：{defer_url(t['id'])}"
         if _push(t, lines, n):
-            if t["repeat"]:
-                nxt = next_occurrence(t["repeat"], remind, n)
+            if t["repeat"] and not nag:
+                # 重复且不催办：当轮发完即排入下一周期
+                nxt = next_occurrence(t["repeat"], anchor, n)
                 if nxt:
-                    db.update(t["id"], remind_at=nxt.strftime(FMT_MIN), nag_count=0)
+                    db.update(t["id"], remind_at=nxt.strftime(FMT_MIN),
+                              snooze_until=None, nag_count=0)
+            elif t["repeat"] and nag:
+                # 重复且需要催办：保留本轮锚点，待确认完成后再排下一周期
+                db.update(t["id"], snooze_until=None, nag_count=0, status="pending")
             elif not nag:
-                db.update(t["id"], status="done")  # 一次性、不催办：发完即完成
+                db.update(t["id"], snooze_until=None, status="done")  # 一次性、不催办：发完即完成
             else:
-                db.update(t["id"], nag_count=0)
+                db.update(t["id"], snooze_until=None, nag_count=0, status="pending")
         return
 
     # 2) 催办：距上次推送超过设定间隔，且不在免打扰时段
@@ -161,7 +200,10 @@ def _handle_heartbeat(n: datetime):
         return
     items = db.today_pending(today)
     if items:
-        body = "\n".join(f"{i + 1}. {t['remind_at'][11:16]} {t['content']}" for i, t in enumerate(items))
+        body = "\n".join(
+            f"{i + 1}. {effective_remind(t).strftime('%H:%M')} {t['content']}"
+            for i, t in enumerate(items)
+        )
         text = f"☀️ 在岗打卡 | 今日待办 {len(items)} 件：\n{body}"
     else:
         text = "☀️ 在岗打卡 | 今日无待办，服务正常运行"
@@ -190,10 +232,11 @@ def complete(t) -> tuple[str, str | None]:
     if t["repeat"]:
         r = parse_min(t["remind_at"])
         nxt = r if r > n else next_occurrence(t["repeat"], r, n)
-        db.update(t["id"], remind_at=nxt.strftime(FMT_MIN), nag_count=0,
-                  last_sent_at=None, last_attempt_at=None, last_error=None)
+        db.update(t["id"], remind_at=nxt.strftime(FMT_MIN), snooze_until=None,
+                  nag_count=0, last_sent_at=None, last_attempt_at=None,
+                  last_error=None, status="pending")
         return f"✅ 已完成本次「{t['content']}」", f"下次提醒：{nxt.strftime(FMT_MIN)}"
-    db.update(t["id"], status="done", last_error=None)
+    db.update(t["id"], status="done", snooze_until=None, last_error=None)
     return f"✅ 已完成「{t['content']}」，催办已停止。", None
 
 

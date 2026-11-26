@@ -18,7 +18,7 @@ wecom:
   secret: "你的应用Secret"
   agentid: 1000002
   touser: "@all"          # 发给应用可见范围内所有人（个人自用即你自己）
-  callback_token: ""      # 设置"接收消息服务器URL"时的 Token（解锁可信IP用）
+  callback_token: ""      # 设置"接收消息服务器URL"时的 Token（解锁可信IP & 接收 /ai 指令用）
   encoding_aes_key: ""    # 对应的 EncodingAESKey（43位）
 
 push:
@@ -30,3 +30,13 @@ push:
 heartbeat:
   enabled: true
   time: "08:00"           # 每天此时推送"今日待办"摘要，兼作在岗心跳
+
+ai:
+  enabled: false                              # 设为 true 启用微信/企微 /ai 命令
+  provider: "openai_compatible"               # 兼容所有 OpenAI /chat/completions 协议接口
+  base_url: "https://api.deepseek.com/v1"     # 默认 DeepSeek；可按需改为 OpenAI / 通义 / Gemini 等兼容地址
+  api_key: ""                                 # 填入大模型 API Key（也可用环境变量 AI_API_KEY 传入）
+  model: "deepseek-chat"                      # 模型名称
+  timeout: 30                                 # 单次请求超时（秒）
+  max_steps: 5                                # 工具调用最大轮次
+  allowed_users: []                           # 允许在企微/微信触发 /ai 的 UserID 列表；留空表示允许应用可见范围内成员

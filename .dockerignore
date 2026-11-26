@@ -2,5 +2,8 @@
 data/
 __pycache__/
 *.pyc
+.pytest_cache/
 .git/
+config.yaml
+tests/
 部署说明.md
